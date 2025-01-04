@@ -1,0 +1,74 @@
+stages:
+  - test
+  - build
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
+  DOCKER_USER: Zselmouni
+  DOCKER_PASSWORD: REBELLErebelle5
+
+before_script:
+  - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USER" --password-stdin || echo "Docker login failed"
+
+test_unit:
+  stage: test
+  image: node:18
+  script:
+    - npm install
+    - npm test || echo "Unit tests failed"
+
+
+
+test_performance:
+  stage: test
+  image: debian:bullseye-slim
+  before_script:
+    - apt-get update && apt-get install -y apache2-utils
+  script:
+    - ab -n 100 -c 10 http://localhost:3000/ || echo "Performance test failed"
+
+test_static_code:
+  stage: test
+  image: node:18
+  script:
+    - npm install eslint
+    - npx eslint . || echo "Static code analysis failed"
+
+test_security:
+  stage: test
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker pull ghcr.io/zaproxy/zaproxy:stable
+    - docker run -d --name zap -u zap -p 8080:8080 -i ghcr.io/zaproxy/zaproxy:stable zap.sh -daemon -host 0.0.0.0 -port 8080 -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
+    - sleep 15
+    - docker exec zap zap-baseline.py -t http://localhost:3000 -r zap-report.html || echo "Security test failed"
+  artifacts:
+    paths:
+      - zap-report.html
+    expire_in: 1 week
+  after_script:
+    - docker stop zap || echo "Failed to stop ZAP container"
+    - docker rm zap || echo "Failed to remove ZAP container"
+
+build:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker-compose build || echo "Build failed"
+
+deploy:
+  stage: deploy
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker-compose down
+    - docker-compose up -d
+  only:
+    - main

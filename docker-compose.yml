@@ -1,0 +1,88 @@
+version: "3.9"
+networks:
+  my-network:
+    driver: bridge
+services:
+  app:
+    build: ./app
+    networks:
+      - my-network
+    ports:
+      - "5000:5000"  # Backend on port 5000
+    environment:
+      DB_HOST: db
+      DB_USER: root
+      DB_PASSWORD: root
+      DB_NAME: items_db
+    volumes:
+      - ./app:/usr/src/app
+    command: npx nodemon server.js
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./item-management
+    networks:
+      - my-network
+    ports:
+      - "3002:3000"  # Frontend on port 3002
+    volumes:
+      - ./item-management:/usr/src/app
+      - /usr/src/app/node_modules
+    command: ["npm", "start"]
+    depends_on:
+      - app
+
+  db:
+    image: mysql:8.0
+    container_name: mysql-container
+    networks:
+      - my-network
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: items_db
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: phpmyadmin
+    networks:
+      - my-network
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+    ports:
+      - "8080:80"  # phpMyAdmin on port 8080
+    depends_on:
+      - db
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    networks:
+      - my-network
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"  # Prometheus on port 9090
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    networks:
+      - my-network
+    ports:
+      - "3001:3001"  # Grafana on port 3001
+    depends_on:
+      - prometheus
+
+volumes:
+  db_data:
