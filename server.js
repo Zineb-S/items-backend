@@ -22,6 +22,7 @@ app.get('/metrics', async (req, res) => {
   res.end(await register.metrics());
 });
 // Start Server
-app.listen(port, () => {
+const server = app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
 });
+module.exports = server;
